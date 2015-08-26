@@ -1,0 +1,349 @@
+global string $controls[];
+
+global proc sk_walker()
+{
+int $scnst = `playbackOptions -q -min`;
+int $scnen = `playbackOptions -q -max`;
+if (`window -ex walker` == true) deleteUI walker;
+string $walker = `window -height 320 -menuBar on -menuBarVisible on -title "Walker" -width 450 walker`;
+menu -label "File";
+	menuItem -label "New" -c "source sk_walker.mel; sk_walker()";
+	menuItem -label "Close" -c ("deleteUI walker");
+	menu -label "Help" -helpMenu true;
+	menuItem -label "Help" -c "sk_Help_walk();";
+	menuItem -label "About!" -c "sk_About_walk();";
+	columnLayout -columnWidth 450 -height 250 -width 450;
+		text -label "                        Please save your scene before you run this. It's not undoable." -align "center";
+		separator -height 5 -width 500;
+		rowLayout -ct1 "left" -co1 10;
+			intFieldGrp -numberOfFields 2 -en 1 -label "Cycle Frame Start" -el "End" -value1 $scnst -value2 $scnen Ncycle;
+			setParent ..;
+		rowLayout -columnWidth2 355 95 -ct2 "right" "left" -height 28 -numberOfColumns 2 -width 450;
+			text -label "The total length the feet moves forward and backward in the cycle        ";
+			floatField -v 0 maxdist;
+			setParent ..;
+		separator -height 5 -width 500;
+		rowLayout -columnWidth3 150 200 100  -ct3 "left" "both" "left" -co3 20 0 5 -height 28 -adj 2 -numberOfColumns 3 -width 450;
+			text -height 17 -label "Path Curve" -width 120;
+			textField -height 23 -text "Select the path curve" -width 200 Npathcurve;
+			button -height 28 -label "      Select" -width 80 -c "selcurve";
+			setParent ..;
+		rowLayout -columnWidth3 150 200 100  -ct3 "left" "both" "left" -co3 20 0 5 -height 28 -adj 2 -numberOfColumns 3 -width 450;
+			text -height 17 -label "Controls" -width 120;
+			textField -height 23 -text "Select the Controls" -width 200 Ncontrols;
+			button -height 28 -label "      Select" -width 80 -c "selcontrols";
+			setParent ..;
+		rowLayout -columnWidth3 150 200 100  -ct3 "left" "both" "left" -co3 20 0 5 -height 28 -adj 2 -numberOfColumns 3 -width 450;
+			text -height 17 -label "Root Placement" -width 120;
+			textField -height 23 -text "Select the Root Placement Node" -width 200 Nroot;
+			button -height 28 -label "      Select" -width 80 -c "selroot";
+			setParent ..;
+		separator -height 5 -width 500;
+		rowLayout -columnWidth2 120 330 -ct2 "left" "left" -height 28 -numberOfColumns 2 -width 450;
+			intFieldGrp -cw2 65 50 -ct2 "left" "left" -numberOfFields 1 -en 1 -label "  Start frame" -value1 0 Nstart;
+			radioButtonGrp -cw3 70 100 100 -cl3 "right" "left" "left" -numberOfRadioButtons 2 -label "Control" -sl 1 -cc "radiochange" -labelArray2 "Frames" "Speed" Nradio;
+			setParent ..;
+		separator -st "none" -height 5 -width 500;
+		rowLayout -columnWidth2 120 330 -ct2 "right" "left" -co2 0 0 -height 28 -numberOfColumns 2 -width 450;
+			checkBox -label "Stop in Between?" -align "left" -cc "checkchange" Ncheckstop;
+			intFieldGrp -cw3 130 75 75 -numberOfFields 2 -en 0 -label "Stop from frame to " -value1 10 -value2 20 Nstoppage;
+			setParent ..;
+		separator -st "none" -height 5 -width 500;
+		rowLayout  -height 28 -width 450;
+			intSliderGrp -label "Number of frames" -field on -cw3 150 20 280 -ct3 "left" "left" "left" -co3 20 0 80 -min 0 -max 100 -fieldMinValue -500 -fieldMaxValue 10000 -height 28 -width 450 -v 100 Nframefield;
+			setParent ..;
+		separator -height 10 -width 500;
+		columnLayout -columnWidth 450 -height 35 -width 450;
+			rowLayout -columnWidth3 150 150 150 -ct3 "left" "left" "left" -co3 20 30 30 -height 40 -numberOfColumns 3 -width 450;
+				button -height 35 -label "        Go Walk" -width 100 -c "gowalk";
+				button -height 35 -vis 0;
+				button -height 35 -label "           Close" -width 100 -c "deleteUI walker";
+				setParent ..;
+			setParent ..;
+			window -e -wh 450 350 $walker;
+showWindow;
+}
+
+global proc gowalk()
+{
+	string $place, $allanim[];
+	string $curve = `textField -q -tx Npathcurve`;
+	string $ctrs = `textField -q -tx Ncontrols`;
+	string $ctrlsst[] = `stringToStringArray $ctrs " "`;
+	$place = `textField -q -text Nroot`;
+	$allanim[0] = $place;
+	string $ctrls[] = `stringArrayRemove $allanim $ctrlsst`;
+	string $oldmot[] = `listHistory -lv 1 $allanim[0]`;
+	for($each in $oldmot)
+	{
+		if (`nodeType $each` == "motionPath")
+		{
+			delete $each;
+		}
+	}
+	int $method = `radioButtonGrp -q -sl Nradio`;
+	int $framespeed = `intSliderGrp -q -v Nframefield`;
+	string $curveinfo = `arclen -ch on $curve`;
+	float $arclen = `getAttr (($curveinfo) + ".arcLength")`;
+	delete $curveinfo;
+	float $dist = `floatField -q -v maxdist`;
+	float $cycstart = `intFieldGrp -q -value1 Ncycle`;
+	float $cycend = `intFieldGrp -q -value2 Ncycle`;
+	int $stops = `checkBox -q -v Ncheckstop`;
+	int $stopstart = `intFieldGrp -q -v1 Nstoppage`;
+	int $stopend = `intFieldGrp -q -v2 Nstoppage`;
+	int $scensta = `intFieldGrp -q -value1 Nstart`;
+	if ($method == 1)
+		{
+			if ($stops == 0)
+			{
+				int $shotend = $scensta + $framespeed;
+				float $speedcycle = ((($framespeed*$dist)/$arclen)*2) + 1;
+				select -cl;
+				for($each in $ctrls)
+				{
+					select -add $each;
+				}
+				scaleKey -time ($cycstart + ":" + $cycend) -newStartTime $cycstart -newEndTime $speedcycle;
+				for($i = 0; $i < `size($ctrls)`; $i++)
+					{
+					selectKey -add -k $ctrls[$i];
+					setInfinity -poi cycle;
+					}
+				select -cl;
+				for($each in $ctrls)
+				{
+					select -add $each;
+				}
+				bakeResults -sm true -t ($scensta+":"+$shotend) -sb 1 -dic false -pok false -sac true -cp false -s false;
+				for($i = 0; $i < `size($ctrls)`; $i++)
+					{
+					selectKey -add -k $ctrls[$i];
+					setInfinity -poi constant;
+					}
+				select -r $allanim;
+				select -add $curve;
+				pathAnimation -fm 1 -f 1 -fa z -ua y -wut "vector" -wu 0 1 0 -iu 0 -if 0 -b 0 -stu $scensta -etu $shotend;
+			}
+			else
+			{
+
+				int $shotend = $scensta + $framespeed;
+				int $stopdur = $stopend - $stopstart;
+				int $framestotal = $framespeed - $stopdur;
+				int $absstopend = $stopstart + $stopdur;
+				int $absshotend = ($scensta + $framestotal);
+				float $speedcycle = ((($framestotal*$dist)/$arclen)*2) + 1;
+				select -cl;
+				for($each in $ctrls)
+				{
+					select -add $each;
+				}
+				scaleKey -time ($cycstart + ":" + $cycend) -newStartTime $cycstart -newEndTime $speedcycle;
+				for($i = 0; $i < `size($ctrls)`; $i++)
+					{
+					selectKey -add -k $ctrls[$i];
+					setInfinity -poi cycle;
+					}
+				select -cl;
+				for($each in $ctrls)
+				{
+					select -add $each;
+				}
+				bakeResults -sm true -t ($scensta + ":" + $absshotend) -sb 1 -dic false -pok false -sac true -cp false -s false;
+				select -cl;
+				for($i = 0; $i < `size($ctrls)`; $i++)
+					{
+					selectKey -add -k $ctrls[$i];
+					setInfinity -poi constant;
+					}
+				select -r $allanim;
+				select -add $curve;
+				string $path = `pathAnimation -fm 1 -f 1 -fa z -ua y -wut "vector" -wu 0 1 0 -iu 0 -if 0 -b 0 -stu $scensta -etu $absshotend`;
+				select -cl;
+				for($each in $ctrls)
+				{
+					select -add $each;
+				}
+				setKeyframe -t $stopstart -i;
+				setKeyframe -t ($stopstart + 1) -i;
+				keyframe -e -iub false -r -o insert -tc $stopdur -t (($stopstart + 0.1) + ":" + $absstopend);
+				selectKey -tgl -k -t ($stopstart + ":" + ($absstopend + 1));
+				keyTangent -itt linear -ott linear;
+				select -cl;
+				for($each in $ctrls)
+				{
+					select -add $each;
+				}
+				setKeyframe -t $absstopend -itt flat -ott spline -i;
+				copyKey -t $stopstart -option keys;
+				pasteKey -t $absstopend;
+				selectKey -tgl -k -t ($stopstart + ":" + $absstopend);
+				keyTangent -itt linear -ott linear;
+				select -r ($path + ".u");
+				setKeyframe -t $stopstart -i -itt spline -ott flat ($path + ".u");
+				setKeyframe -t ($stopstart + 1) -i -itt spline -ott flat ($path + ".u");
+				keyframe -e -iub false -r -o insert -tc ($stopdur - 1) -t ($stopstart + 1) ($path + ".u");
+				keyframe -e -iub false -r -o insert -tc 1 -t (($stopstart + 2)+ ":" + ($shotend)) ($path + ".u");
+				copyKey -t $stopstart -option keys ($path + ".u");
+				pasteKey -t $absstopend ($path + ".u");
+				select -cl;
+				selectKey -add -k ($path + ".u");
+				keyTangent -itt linear -ott linear;
+				select -cl;
+			}
+		}
+		else
+		{
+			float $cycdur = ($cycend - $cycstart);
+			float $speedper = $framespeed*0.01;
+			float $newspeed = $cycstart + (1/$speedper)*$cycdur;
+			float $pathframes = ($arclen *0.5*($newspeed - $cycstart))/$dist;
+			float $pathend = $pathframes + $scensta;
+			select -cl;
+			for($each in $ctrls)
+			{
+				select -add $each;
+			}
+			scaleKey -time ($cycstart + ":" + $cycend) -newStartTime $cycstart -newEndTime $newspeed;
+			for($i = 0; $i < `size($ctrls)`; $i++)
+				{
+				selectKey -add -k $ctrls[$i];
+				setInfinity -poi cycle;
+				}
+			select -cl;
+			for($each in $ctrls)
+			{
+				select -add $each;
+			}
+			bakeResults -sm true -t ($scensta+":"+$pathend) -sb 1 -dic false -pok false -sac true -cp false -s false;
+			for($i = 0; $i < `size($ctrls)`; $i++)
+				{
+				selectKey -add -k $ctrls[$i];
+				setInfinity -poi constant;
+				}
+			select -r $allanim;
+			select -add $curve;
+			pathAnimation -fm 1 -f 1 -fa z -ua y -wut "vector" -wu 0 1 0 -iu 0 -if 0 -b 0 -stu $scensta -etu $pathend;
+		}
+}
+
+global proc radiochange()
+{
+	int $sel = `radioButtonGrp -q -sl Nradio`;
+	if($sel == 1)
+	{
+		intSliderGrp -e -label "Number of frames" -field on -cw3 150 20 280 -ct3 "left" "left" "left" -co3 20 0 80 -min 0 -max 100 -fieldMinValue -500 -fieldMaxValue 1000 -height 28 -width 450 -v 100 Nframefield;
+		checkBox -e -en 1 Ncheckstop;
+		if(`checkBox -q -v Ncheckstop` == 1) intFieldGrp -e -en 1 Nstoppage;
+		return;
+	}
+	else
+	{
+		intSliderGrp -e -label "Speed %" -field on -cw3 150 20 280 -ct3 "left" "left" "left" -co3 20 0 80 -min 1 -max 500 -fieldMinValue 0 -fieldMaxValue 5000 -height 29 -width 450 -v 100 Nframefield;
+		checkBox -e -en 0 Ncheckstop;
+		intFieldGrp -e -en 0 Nstoppage;
+		return;
+	}
+}
+
+global proc checkchange()
+{
+	int $chk = `checkBox -q -v Ncheckstop`;
+	if($chk == 1)
+	{
+		intFieldGrp -e -numberOfFields 2 -en 1 -label "Stop from frame to " -value1 10 -value2 20 Nstoppage;
+		return;
+	}
+	else
+	{
+		intFieldGrp -e -numberOfFields 2 -en 0 -label "Stop from frame to " -value1 10 -value2 20 Nstoppage;
+		return;
+	}
+}
+
+global proc selcurve()
+{
+	string $sel[] = `ls -sl`;
+	if (`size($sel)` != 1)
+	{
+		textField -e -tx "Please select one curve" Npathcurve;
+		return;
+	}
+	string $selshap[] = `listRelatives -c -s $sel[0]`;
+	if(!`objectType -isType "nurbsCurve" $selshap[0]`)
+	{
+		textField -e -tx "Selected object is not a curve" Npathcurve;
+		return;
+	}
+	else
+	{
+		textField -e -tx ($sel[0]) Npathcurve;
+	}
+}
+
+global proc selroot()
+{
+	string $sel[] = `ls -sl`;
+	if (`size($sel)` != 1)
+	{
+		textField -e -tx "Please select one curve" Nroot;
+		return;
+	}
+	else
+	{
+		textField -e -tx $sel[0] Nroot;
+		return;
+	}
+}
+
+global proc selcontrols()
+{
+	global string $controls[];
+	$controls = `ls -sl`;
+	string $listctrls = `stringArrayToString $controls " "`;
+	textField -e -text $listctrls Ncontrols;
+}
+
+global proc sk_Help_walk()
+{
+	int $top = `window -q -te walker`;
+	int $left = `window -q -le walker` + 450;
+	if (`window -ex walkhelp`) deleteUI walkhelp;
+	string $walkhelp = `window -t "Help" -te $top -le $left -w 400 -h 400 walkhelp`;
+	columnLayout -cal "center";
+	separator -st "none" -height 5;
+	text -l " The Walker script will allow you to animate a character's cycle along a path ";
+	text -l " without any sliding of the feet. You have to make sure that the cycle is uniform";
+	text -l " and the animation curve of the translate Z of the feet is linear. ";
+	separator -st "none" -height 5;
+	text -l " Cycle frame start is the start and end of the animation cycle you are using.";
+	text -l " The length the feet moves forward and backward in the cycle is the distance";
+	text -l " between the peak and trough of the animation curve of translate Z of the foot.";
+	separator -st "none" -height 5;
+	text -l " Path curve is the nurbs curve that you want the character to walk along.";
+	text -l " Controls are are the controls that have been animated in the cycle.";
+	text -l " The root placement is the control you use to move the whole animation in space.";
+	text -l " Start frame is the frame at which you want the character to start walking.";
+	separator -st "none" -height 5;
+	text -l " There are 2 methods you can use to make the character walk. In frames you will";
+	text -l " specify the number of frames (slider at the bottom) the character should take to";
+	text -l " walk from one end of the the curve to the other end. You can also make the";
+	text -l " character stop in between by checking the the check box and entering the frames";
+	text -l " at which the character should stop and the frame at which it should start again.";
+	text -l " In speed method you just specify the percent of the existing cycle that the";
+	text -l " character should walk to cover the curve. You won't have any control over how";
+	text -l " many frames it will take to complete the curve. -------- Cheers-------Suneeth";
+	setParent..;
+	window -e -wh 420 350 -te $top -le $left $walkhelp;
+	showWindow walkhelp;
+
+}
+
+global proc sk_About_walk()
+{
+confirmDialog -title "About"
+	-message "Script: sk_walker.mel\nAuthor: Suneeth\nsuneethsk@gmail.com\nCopyright 2006 (C) Suneeth\nAll Rights Reserved."
+	-messageAlign center
+ 	-button "Ok" -defaultButton "Ok";
+}
